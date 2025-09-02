@@ -1,0 +1,150 @@
+//FIFO Memory Implementation
+//code 
+module fifo #(
+    parameter DATA_WIDTH = 8,
+    parameter FIFO_DEPTH = 4
+)(
+    input clk,
+    input rst,
+    input wr_en,
+    input rd_en,
+    input [DATA_WIDTH-1:0] din,
+    output reg [DATA_WIDTH-1:0] dout,
+    output reg full,
+    output reg empty
+);
+
+    reg [DATA_WIDTH-1:0] mem [0:FIFO_DEPTH-1];
+    reg [$clog2(FIFO_DEPTH):0] rd_ptr, wr_ptr;
+    reg [$clog2(FIFO_DEPTH+1):0] count;
+
+    // FIFO Write Operation
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            wr_ptr <= 0;
+            count <= 0;
+        end else if (wr_en && !full) begin
+            mem[wr_ptr] <= din;
+            wr_ptr <= (wr_ptr + 1) % FIFO_DEPTH;
+            count <= count + 1;
+        end
+    end
+
+    // FIFO Read Operation
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            rd_ptr <= 0;
+            dout <= 0;
+        end else if (rd_en && !empty) begin
+            dout <= mem[rd_ptr];
+            rd_ptr <= (rd_ptr + 1) % FIFO_DEPTH;
+            count <= count - 1;
+        end
+    end
+
+    // Full & Empty flags
+    always @(*) begin
+        full = (count == FIFO_DEPTH);
+        empty = (count == 0);
+    end
+
+endmodule
+
+
+//testbench
+`timescale 1ns/1ps
+
+module tb_fifo;
+
+    parameter DATA_WIDTH = 8;
+    parameter FIFO_DEPTH = 4;
+
+    reg clk;
+    reg rst;
+    reg wr_en;
+    reg rd_en;
+    reg [DATA_WIDTH-1:0] din;
+    wire [DATA_WIDTH-1:0] dout;
+    wire full;
+    wire empty;
+
+    fifo #(.DATA_WIDTH(DATA_WIDTH), .FIFO_DEPTH(FIFO_DEPTH)) uut (
+        .clk(clk),
+        .rst(rst),
+        .wr_en(wr_en),
+        .rd_en(rd_en),
+        .din(din),
+        .dout(dout),
+        .full(full),
+        .empty(empty)
+    );
+
+    // Clock generation
+    always #5 clk = ~clk;
+
+    initial begin
+        clk = 0;
+        rst = 1;
+        wr_en = 0;
+        rd_en = 0;
+        din = 0;
+
+        // Reset FIFO
+        #10 rst = 0;
+
+        // Write some data
+        write_fifo(8'hA1);
+        write_fifo(8'hB2);
+        write_fifo(8'hC3);
+        write_fifo(8'hD4);
+
+        // Try writing when full
+        write_fifo(8'hE5);
+
+        // Read some data
+        read_fifo();
+        read_fifo();
+
+        // Write more data
+        write_fifo(8'hF6);
+        write_fifo(8'h07);
+
+        // Read remaining data
+        read_fifo();
+        read_fifo();
+        read_fifo();
+        read_fifo();
+
+        $stop;
+    end
+
+    task write_fifo(input [DATA_WIDTH-1:0] data);
+        begin
+            @(posedge clk);
+            if (!full) begin
+                wr_en = 1;
+                din = data;
+                @(posedge clk);
+                wr_en = 0;
+                $display("Time=%0t | WR=%h | FULL=%b", $time, data, full);
+            end else begin
+                $display("Time=%0t | FIFO FULL, cannot write %h", $time, data);
+            end
+        end
+    endtask
+
+    task read_fifo();
+        begin
+            @(posedge clk);
+            if (!empty) begin
+                rd_en = 1;
+                @(posedge clk);
+                rd_en = 0;
+                $display("Time=%0t | RD=%h | EMPTY=%b", $time, dout, empty);
+            end else begin
+                $display("Time=%0t | FIFO EMPTY, cannot read", $time);
+            end
+        end
+    endtask
+
+endmodule
